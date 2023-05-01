@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>TR in VR</title>
+    <meta name="description" content="TR in VR">
+    <script src="//aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://mixedreality.mozilla.org/ammo.js/builds/ammo.wasm.js"></script>
+    <script src="//cdn.jsdelivr.net/gh/n5ro/aframe-physics-system@v4.0.1/dist/aframe-physics-system.min.js"></script>
+    <script src="//cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
+
+    <script src="components/aabb-collider.js"></script>
+    <script src="components/grab.js"></script>
+    <script src="components/ground.js"></script>
+    <script src="shaders/skyGradient.js"></script>
+    <script src="https://unpkg.com/aframe-event-set-component@4.0.1/dist/aframe-event-set-component.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+ <script>
+
+   /**
+    * Like TR 1 where lara grunts when the block is pushed
+    * */
+   AFRAME.registerComponent('audiohandler', {
+  init:function() {
+     let playing = false;
+     let audio = document.querySelector("#push");
+
+     this.el.addEventListener('hit', () => {
+       if(!playing){
+         playing = true;
+         audio.currentTime = 0;
+              audio.play();
+       }
+       
+         
+     });
+     this.el.addEventListener('hitend', () => {
+        audio.currentTime = 0;
+              audio.pause();
+              playing = false;
+     });
+  }
+})
+
+
+
+      //collision detection
+      AFRAME.registerComponent('collision-wire', {
+        schema: {
+          element: {type: 'string'}
+        },
+        init: function() {
+          let el = this.el;
+          let element = this.data.element;
+
+          el.addEventListener("collidestart", function (event) {
+            if ( event.detail.targetEl.id === element) {
+              el.setAttribute('material', {'wireframe': true});
+            };
+          });
+          el.addEventListener("collideend", function (event) {
+            if ( event.detail.targetEl.id === element) {
+              el.setAttribute('material', {'wireframe': false});
+            };
+          });
+        }
+      });
+
+
+
+      //movement of camera
+AFRAME.registerComponent('joystick', {
+ 
+  init:function() {
+    this.el.addEventListener('axismove',  evt => {
+      console.log(evt);
+
+      let camera = document.querySelector('#camera-rig');
+      let pos = camera.getAttribute('position');
+      let rot = camera.getAttribute('rotation');
+
+    
+
+
+      let data = "Joy [X:"+evt.detail.axis[2].toFixed(3)+
+                     ",Y:"+evt.detail.axis[3].toFixed(3)+"]";
+
+let move = false;
+      if((evt.detail.axis[2]>=0) && (evt.detail.axis[3]<-0.25)){
+        //up
+       data+="\nUP";
+        newpos.z = pos.z+1;
+move = true;
+      }
+
+      if((evt.detail.axis[2]>=0) && (evt.detail.axis[3]>0.25)){
+        data+="\nDOWN";
+        //down
+        newpos.z = pos.z-1;
+        move = true;
+      }
+if(move){
+  oldpos = newpos;
+}
+
+
+     
+
+      data+="\n"+"Change:"+JSON.stringify(evt.detail.changed);
+      data+="\n pos:["+pos.x.toFixed(3)+','
+                      +pos.y.toFixed(3)+','
+                      +pos.z.toFixed(3)+']';
+
+      data+="\n rot:["+rot.x.toFixed(3)+','
+                      +rot.y.toFixed(3)+','
+                      +rot.z.toFixed(3)+']';
+
+     
+      
+      let text="width: 2; lineHeight: 50; letterSpacing: 5; color: white; value:"+data;
+      document.getElementById('textblock1').setAttribute('text', text);
+
+    });  
+     
+  }
+  
+});
+
+AFRAME.registerComponent('joypad-button-listener', {
+  init: function () {
+    let el = this.el;
+    let text="width: 2; lineHeight: 50; letterSpacing: 5; color: white; value:";
+    el.addEventListener('abuttondown', function () {
+      console.log('A button pressed on', el.id);
+      document.getElementById('textblock2').setAttribute('text', "A");
+    });
+    el.addEventListener('bbuttondown', function () {
+      console.log('B button pressed on', el.id);
+      document.getElementById('textblock2').setAttribute('text', "B");
+    });
+    el.addEventListener('xbuttondown', function () {
+      console.log('X button pressed on', el.id);
+      document.getElementById('textblock2').setAttribute('text', "X");
+    });
+    el.addEventListener('ybuttondown', function () {
+      console.log('Y button pressed on', el.id);
+      document.getElementById('textblock2').setAttribute('text', "Y");
+    });
+  }
+});
+
+AFRAME.registerComponent('jump', {
+  init: function () {
+    this.el.addEventListener('abuttondown', function () {
+      let el = this.el;
+    let rig = document.querySelector('#camera-rig');
+    let leftController = document.querySelector('#leftController');
+      document.getElementById('textblock1').setAttribute('text', "JUMP!!");
+
+      // Check if no direction is set on the left joystick
+      if (leftController.components['thumbstick-direction'].data.x === 0 && 
+          leftController.components['thumbstick-direction'].data.y === 0) {
+        // Apply an impulse to the camera rig's physics body in the y-axis
+        rig.components['ammo-body'].body.applyImpulse(
+          /* impulse */        new Ammo.btVector3(0, 5, 0),
+          /* world position */ new Ammo.btVector3().setValue(rig.object3D.position.x, rig.object3D.position.y, rig.object3D.position.z)
+        );
+      }
+    });
+  }
+});
+
+
+AFRAME.registerComponent('thumbstick-look-controls', {
+  init: function () {
+    this.yaw = 0;
+    this.pitch = 0;
+    this.rig = document.querySelector('#camera-rig');
+  },
+  tick: function () {
+    let rotation = this.el.getAttribute('rotation');
+    let position = this.el.getAttribute('position');
+    let thumbstick = this.el.components['oculus-touch-controls'].thumbstick;
+    
+    // Rotation from right joystick
+    this.yaw -= thumbstick.x * 2;
+    this.pitch += thumbstick.y * 2;
+    
+    // Translation from left joystick
+    let leftController = document.querySelector('#leftController');
+    let leftThumbstick = leftController.components['oculus-touch-controls'].thumbstick;
+    
+    let direction = new THREE.Vector3(leftThumbstick.x, 0, -leftThumbstick.y);
+    
+    direction.applyQuaternion(this.rig.object3D.quaternion);
+    
+    this.rig.object3D.position.addScaledVector(direction, 0.1);
+    
+    // Update rig rotation
+    this.rig.object3D.rotation.set(0, THREE.Math.degToRad(this.yaw), 0);
+    
+    // Update camera pitch
+    let camera = document.querySelector('a-camera');
+    
+    camera.object3D.rotation.set(THREE.Math.degToRad(this.pitch), 0, 0);
+  }
+});
+
+ </script>
+  </head>
+  <body>
+    <a-scene
+      physics="driver: ammo; debug: true; debugDrawMode: 1;"
+      renderer="colorManagement: true;"
+      cursor="rayOrigin: mouse"
+      raycaster="objects: [cube]" fog="color: #bc483e; near: 0; far: 65;">
+      <a-assets>
+        <audio id="push" src="p&p02.wav" preload="auto"></audio>
+        <a-mixin id="movable-cube"
+                 event-set__grab="material.color: #FFEF4F"
+                 event-set__grabend="material.color: #F2E646"
+                 event-set__hit="material.color: #F2E646"
+                 event-set__hitend="material.color: #EF2D5E"
+                 event-set__mousedown="material.color: #FFEF4F"
+                 event-set__mouseenter="material.color: #F2E646"
+                 event-set__mouseleave="material.color: #EF2D5E"
+                 event-set__mouseup="material.color: #F2E646"
+                 geometry="primitive: box; height: 2; width: 2; depth: 2"
+                 material="color: #EF2D5E;"></a-mixin>
+
+        <a-mixin id="fixed-cube"
+                geometry="primitive: box; height: 2; width: 2; depth: 2"
+                 material="color: #7f7f7f;"></a-mixin>
+                 <a-mixin
+                 id="marker"
+                 geometry="primitive: plane; width: 0.02; height: 0.02"
+                 material="color: red"
+               ></a-mixin>
+           <a-asset-item id="ground" src="https://cdn.aframe.io/examples/tracked-controls/ground.glb"></a-asset-item>
+        </a-assets>
+      </a-assets>
+
+
+  
+
+      <!-- A-Frame cubes -->
+      <a-entity position="0 0 0">
+        <a-entity id="pushable-block1"
+                  ammo-body="type: dynamic" ammo-shape="type: box"
+                  audiohandler
+                  material="src: granite.png"
+                  class="cube" 
+                  mixin="movable-cube" 
+                  position="0 1.5 -1"
+                  scale="1 1 1"></a-entity>
+
+       
+
+
+                  <a-entity ammo-body="type: static; emitCollisionEvents: true;"
+                  material="src: granite.png"
+                  mixin="fixed-cube" 
+                  position="2 1.5 -1"
+                  scale="1 1 1"></a-entity>
+                  <a-entity ammo-body="type: static; emitCollisionEvents: true;"
+                  material="src: granite.png"
+                  mixin="fixed-cube" 
+                  position="-2 1.5 -1"
+                  scale="1 1 1"></a-entity>
+
+                  <a-entity ammo-body="type: static; emitCollisionEvents: true;"
+                  material="src: granite.png"
+                  mixin="fixed-cube" 
+                  position="4 1.5 1"
+                  scale="1 1 1"></a-entity>
+    <a-entity     ammo-body="type: static; emitCollisionEvents: true;"
+                  material="src: granite.png"
+                  mixin="fixed-cube" 
+                  position="-4 1.5 1"
+                  scale="1 1 1"></a-entity>
+
+    <a-entity      ammo-body="type: static; emitCollisionEvents: true;"
+                  material="src: granite.png"
+                  mixin="fixed-cube" 
+                  position="6 1.5 3"
+                  scale="1 1 1"></a-entity>
+    <a-entity ammo-body="type: static; emitCollisionEvents: true;"
+                  material="src: granite.png"
+                  mixin="fixed-cube" 
+                  position="-6 1.5 3"
+                  scale="1 1 1"></a-entity>
+
+
+
+
+<!--text-->
+<a-entity mixin="marker" position="-1 2 0.01"></a-entity>
+      <a-entity id="textblock1"
+                debugstring
+                position="-1 2 0"
+                text="width: 2; lineHeight: 50; letterSpacing: 5; color: white; value:'test'">
+      </a-entity>
+
+      <a-entity id="textblock2"
+      debugstring
+      position="-1 3 0"
+      text="width: 2; lineHeight: 50; letterSpacing: 5; color: white; value:'test'">
+</a-entity>
+
+
+        <!-- Environment -->
+        <a-entity id="sky"
+                  geometry="primitive: sphere; radius: 65;"
+                  material="shader: skyGradient; colorTop: #353449; colorBottom: #BC483E; side: back"></a-entity>
+       
+                
+                   <!-- Static floor -->
+      <a-plane ammo-body="type: static" ammo-shape="type: box"
+      position="0 0 -4" rotation="-90 0 0" width="400" height="400" ></a-plane>
+      <a-entity ground ></a-entity>
+
+
+         <a-entity light="type: point; color: #f4f4f4; intensity: 0.1; distance: 0" position="-2.5 1.2 2.2"></a-entity>
+         <a-entity light="type: point; color: #f4f4f4; intensity: 0.1; distance: 0" position="-20 -7 -40"></a-entity>
+         <a-entity light="type: ambient; color: #f4f4f4; intensity: 0.25;" position="-8 10 -18"></a-entity>
+      </a-entity>
+      <!-- Hands -->
+      
+      
+
+      <!-- Camera rig, with a cylynder to give an idea of its "size"-->
+      <a-entity movement-controls="fly: false" 
+          position="0 0 5"
+          geometry="primitive: cylinder; height: 2; radius: 0.8"
+          material="color: green; wireframe: true"
+          id="camera-rig"  
+          ammo-body="type: dynamic;" 
+          ammo-shape="type: cylinder">
+        <a-entity 
+          camera position="0 1.6 0" 
+          look-controls>
+        </a-entity>    
+        <a-entity id="leftController" 
+        joystick hand-controls="hand: left; handModelStyle: lowPoly; color: #ffcccc" 
+        aabb-collider="objects: .cube;"
+        jump       
+        joypad-button-listener  
+        grab>
+      </a-entity>
+        <a-entity id="rightController" 
+        joystick hand-controls="hand: right; handModelStyle: lowPoly; color: #ffcccc" 
+        aabb-collider="objects: .cube;"
+        jump 
+        joypad-button-listener
+        grab>
+      </a-entity>
+      
+      </a-entity>
+    </a-scene>
+  </body>
+</html>
